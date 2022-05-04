@@ -7,6 +7,9 @@
 typedef struct {
     int ID;
     int type;
+    int created;
+    int request;
+    int end;
     // you might want to add variables here!
 } Job;
 
@@ -92,6 +95,16 @@ Job Dequeue(Queue *pQueue) {
     pQueue->size--;
     ret = item->data;
     free(item);
+    return ret;
+}
+
+Job peek(Queue *pQueue){
+    NODE *item;
+    Job ret;
+    if (isEmpty(pQueue))
+        return ret;
+    item = pQueue->head;
+    ret = item->data;
     return ret;
 }
 

@@ -4,11 +4,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "logger.c"
 
 int simulationTime = 120;    // simulation time
 int seed = 10;               // seed for randomness
 int emergencyFrequency = 40; // frequency of emergency
 float p = 0.2;               // probability of a ground job (launch & assembly)
+
+#define MAX_WAIT 5
 
 time_t start_time;
 
@@ -17,17 +20,22 @@ int t = 2;
 int pad_a_available = 1;
 int pad_b_available = 1;
 
-int next_launching_id = 1;
-int next_assembly_id = 2;
-int next_landing_id = 3;
+int job_id = 1;
 
 struct Queue *assembly_queue;
 struct Queue *launching_queue;
 struct Queue *landing_queue;
+struct Queue *pad_A;
+struct Queue *pad_B;
+struct Queue *waiting_queue;
 
 pthread_mutex_t launching_mutex;
 pthread_mutex_t assembly_mutex;
 pthread_mutex_t landing_mutex;
+pthread_mutex_t pad_A_mutex;
+pthread_mutex_t pad_B_mutex;
+pthread_mutex_t log_mutex;
+pthread_mutex_t id_mutex;
 
 void* LandingJob(void *arg); 
 void* LaunchJob(void *arg);
@@ -74,49 +82,63 @@ int main(int argc,char **argv){
     // -p (float) => sets p
     // -t (int) => simulation time in seconds
     // -s (int) => change the random seed
-
+    
     int i = 1;
     for(i=1; i<argc; i++){
         if(!strcmp(argv[i], "-p")) {p = atof(argv[++i]);}
         else if(!strcmp(argv[i], "-t")) {simulationTime = atoi(argv[++i]);}
         else if(!strcmp(argv[i], "-s"))  {seed = atoi(argv[++i]);}
     }
-    
+    start_time = time(NULL);
+    logger_init();
+
     srand(seed); // feed the seed
-
-    pthread_t control_tower_id;
-    pthread_create(&control_tower_id, NULL, ControlTower, NULL);
-
 
     assembly_queue = malloc(sizeof(*assembly_queue));
     launching_queue = malloc(sizeof(*launching_queue));
     landing_queue = malloc(sizeof(*landing_queue));
+    pad_A = malloc(sizeof(*pad_A));
+    pad_B = malloc(sizeof(*pad_B));
+    waiting_queue = malloc(sizeof(*waiting_queue));
 
-    assembly_queue = ConstructQueue(9999999);
-    launching_queue = ConstructQueue(9999999);
-    landing_queue = ConstructQueue(9999999);
+    assembly_queue = ConstructQueue(1000);
+    launching_queue = ConstructQueue(1000);
+    landing_queue = ConstructQueue(1000);
+    pad_A = ConstructQueue(1);
+    pad_B = ConstructQueue(1);
+    waiting_queue = ConstructQueue(1000);
 
     pthread_mutex_init(&launching_mutex, NULL);
     pthread_mutex_init(&assembly_mutex, NULL);
     pthread_mutex_init(&landing_mutex, NULL);
+    pthread_mutex_init(&pad_A_mutex, NULL);
+    pthread_mutex_init(&pad_B_mutex, NULL);
+    pthread_mutex_init(&log_mutex, NULL);
+    pthread_mutex_init(&id_mutex, NULL);
+    
+    pthread_t control_tower_id;
+    pthread_create(&control_tower_id, NULL, ControlTower, NULL);
+    pthread_t pad_A_id;
+    pthread_create(&pad_A_id, NULL, ExecutePadA, NULL);
+    pthread_t pad_B_id;
+    pthread_create(&pad_B_id, NULL, ExecutePadB, NULL);
+    pthread_t first_job;
+    pthread_create(&first_job, NULL, LaunchJob, NULL);
    
-    start_time = time(NULL);
-
     while (get_seconds_since_start() < simulationTime) {
-
         double random = (rand() / (double) RAND_MAX);
-
+        printf("rand: %d\n", random);
         if (random <= p) {
             // landing
             pthread_t landing_id;
             pthread_create(&landing_id, NULL, LandingJob, NULL);
         } else {
             if (random > p && random <= (p + ((1 - p) / 2))) {
-                // new launching plane
+                // new launching jıb
                 pthread_t launching_id;
                 pthread_create(&launching_id, NULL, LaunchJob, NULL);
             } else {
-                // new assembly plane
+                // new assembly job
                 pthread_t assembly_id;
                 pthread_create(&assembly_id, NULL, AssemblyJob, NULL);
             }
@@ -124,6 +146,7 @@ int main(int argc,char **argv){
         pthread_sleep(t);
     }
     
+
     /* Queue usage example
         Queue *myQ = ConstructQueue(1000);
         Job j;
@@ -133,22 +156,34 @@ int main(int argc,char **argv){
         Job ret = Dequeue(myQ);
         DestructQueue(myQ);
     */
+    pthread_join(control_tower_id, NULL);
+    pthread_join(pad_A_id, NULL);
+    pthread_join(pad_B_id, NULL);
 
     // your code goes here
+    DestructQueue(landing_queue);
+    DestructQueue(assembly_queue);
+    DestructQueue(launching_queue);
+    free(landing_queue);
+    free(assembly_queue);
+    free(launching_queue);
 
     return 0;
 }
 
 // the function that creates plane threads for landing
 void* LandingJob(void *arg){
-    Job job;
+    Job *job = malloc(sizeof(Job));
     
     pthread_mutex_lock(&landing_mutex);
 
-    job.ID = next_landing_id;
-    next_landing_id += 3;
-    job.type = 1;
-    Enqueue(landing_queue, job);
+    pthread_mutex_lock(&id_mutex);
+    job->ID = job_id;
+    job_id += 1;
+    pthread_mutex_unlock(&id_mutex);
+    job->type = 1;
+    job->created = get_seconds_since_start();
+    Enqueue(landing_queue, *job);
 
     pthread_mutex_unlock(&landing_mutex);
     pthread_exit(0);
@@ -156,14 +191,17 @@ void* LandingJob(void *arg){
 
 // the function that creates plane threads for departure
 void* LaunchJob(void *arg){
-    Job job; // = malloc(sizeof(Job));
+    Job *job = malloc(sizeof(Job));
 
     pthread_mutex_lock(&launching_mutex);
+    pthread_mutex_lock(&id_mutex);
+    job->ID = job_id;
+    job_id += 1;
+    pthread_mutex_unlock(&id_mutex);
     
-    job.ID = next_launching_id;
-    next_launching_id += 3;
-    job.type = 2;
-    Enqueue(launching_queue, job);
+    job->type = 2;
+    job->created = get_seconds_since_start();
+    Enqueue(launching_queue, *job);
 
     pthread_mutex_unlock(&launching_mutex);
 
@@ -177,14 +215,17 @@ void* EmergencyJob(void *arg){
 
 // the function that creates plane threads for emergency landing
 void* AssemblyJob(void *arg){
-    Job job; // = malloc(sizeof(*job));
+    Job *job = malloc(sizeof(Job));
 
     pthread_mutex_lock(&assembly_mutex);
 
-    job.ID = next_assembly_id;
-    next_assembly_id += 3;
-    job.type = 3;
-    Enqueue(assembly_queue, job);
+    pthread_mutex_lock(&id_mutex);
+    job->ID = job_id;
+    job_id += 1;
+    pthread_mutex_unlock(&id_mutex);
+    job->type = 3;
+    job->created = get_seconds_since_start();
+    Enqueue(assembly_queue, *job);
 
     pthread_mutex_unlock(&assembly_mutex);
 
@@ -193,83 +234,151 @@ void* AssemblyJob(void *arg){
 
 // the function that controls the air traffic
 void* ControlTower(void *arg){
+    int state = 0;
+    Job job;
     while (get_seconds_since_start() < simulationTime) {
-        if (pad_b_available == 1) {
+        if(pad_A->size > pad_B->size){
+            state = 1;
+        }else{
+            state = 0;
+        }
+        printf("land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
+        while((get_seconds_since_start() - peek(waiting_queue).request) >= MAX_WAIT && (assembly_queue->size <= 3 || launching_queue->size <= 3) && waiting_queue->size > 0){
+            job = Dequeue(waiting_queue);
+            if(state){
+                pthread_mutex_lock(&pad_B_mutex);
+                Enqueue(pad_B, job);
+                pthread_mutex_unlock(&pad_B_mutex);
+            }else{
+                pthread_mutex_lock(&pad_A_mutex);
+                Enqueue(pad_A, job);
+                pthread_mutex_unlock(&pad_A_mutex);
+            }
+            printf("land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
+        }
+
+        if(pad_b_available && pad_B->size == 0){ //pad B
             pthread_mutex_lock(&landing_mutex);
-            if (landing_queue->size > 0) {
-                pad_b_available = 0;
-                Job job = Dequeue(landing_queue);
-                int id = job.ID;
-                printf("PAD B: landing job is currently under execution with job id %d\n", id);
-                pthread_t new_landing_thread;
-                int landing = 0;
-                pthread_create(&new_landing_thread, NULL, ExecutePadB, (void*)&landing);
+            if(landing_queue->size > 0){
+                job = Dequeue(landing_queue);
+                job.request = get_seconds_since_start();
+                if(waiting_queue->size == 0 || assembly_queue->size > 3 || launching_queue->size > 3){
+                    Enqueue(waiting_queue, job);
+                }else{
+                    if(state){
+                        pthread_mutex_lock(&pad_B_mutex);
+                        Enqueue(pad_B, job);
+                        pthread_mutex_unlock(&pad_B_mutex);
+                    }else{
+                        pthread_mutex_lock(&pad_A_mutex);
+                        Enqueue(pad_A, job);
+                        pthread_mutex_unlock(&pad_A_mutex);
+                    }
+                }
+                log_tower(&job);
                 pthread_mutex_unlock(&landing_mutex);
-            } else {
+            }else{
                 pthread_mutex_unlock(&landing_mutex);
                 pthread_mutex_lock(&assembly_mutex);
-                if (assembly_queue->size > 0) {
-                    pad_b_available = 0;
-                    Job job = Dequeue(assembly_queue);
-                    int id = job.ID;
-                    printf("PAD B: assembly job is currently under execution with job id %d\n", id);
-                    pthread_t new_assembly_thread;
-                    int assembly = 1;
-                    pthread_create(&new_assembly_thread, NULL, ExecutePadB, (void*)&assembly);
+                if(assembly_queue->size > 0){
+                    job = Dequeue(assembly_queue);
+                    job.request = get_seconds_since_start();
+                    pthread_mutex_lock(&pad_B_mutex);
+                    Enqueue(pad_B, job);
+                    pthread_mutex_unlock(&pad_B_mutex);
                 }
+                log_tower(&job);
                 pthread_mutex_unlock(&assembly_mutex);
-
             }
         }
 
-        if (pad_a_available == 1) {
+        if(pad_a_available && pad_A->size == 0){ //pad A
             pthread_mutex_lock(&landing_mutex);
-            if (landing_queue->size > 0) {
-                pad_a_available = 0;
-                Job job = Dequeue(landing_queue);
-                int id = job.ID;
-                printf("PAD A: landing job is currently under execution with job id %d\n", id);
-                pthread_t new_landing_thread;
-                int landing = 0;
-                pthread_create(&new_landing_thread, NULL, ExecutePadA, (void*)&landing);
+            if(landing_queue->size > 0){
+                job = Dequeue(landing_queue);
+                job.request = get_seconds_since_start();
+                if(waiting_queue->size == 0 || assembly_queue->size > 3 || launching_queue->size > 3){
+                    Enqueue(waiting_queue, job);
+                }else{
+                    if(state){
+                        pthread_mutex_lock(&pad_B_mutex);
+                        Enqueue(pad_B, job);
+                        pthread_mutex_unlock(&pad_B_mutex);
+                    }else{
+                        pthread_mutex_lock(&pad_A_mutex);
+                        Enqueue(pad_A, job);
+                        pthread_mutex_unlock(&pad_A_mutex);
+                    }
+                }
+                log_tower(&job);
                 pthread_mutex_unlock(&landing_mutex);
-            } else {
+            }else{
                 pthread_mutex_unlock(&landing_mutex);
                 pthread_mutex_lock(&launching_mutex);
-                if (launching_queue->size > 0) {
-                    pad_a_available = 0;
-                    Job job = Dequeue(launching_queue);
-                    int id = job.ID;
-                    printf("PAD A: launching job is currently under execution with job id %d\n", id);
-                    pthread_t new_launching_thread;
-                    int launching = 1;
-                    pthread_create(&new_launching_thread, NULL, ExecutePadA, (void*)&launching);
+                if(launching_queue->size > 0){
+                    job = Dequeue(launching_queue);
+                    job.request = get_seconds_since_start();
+                    pthread_mutex_lock(&pad_A_mutex);
+                    Enqueue(pad_A, job);
+                    pthread_mutex_unlock(&pad_A_mutex);
                 }
+                log_tower(&job);
                 pthread_mutex_unlock(&launching_mutex);
             }
         }
+        pthread_sleep(t);
     }
 }
 
 void* ExecutePadA(void *arg) {
-    int type = *(int*)arg;
-    if (type == 0) { // execute landing
-        pthread_sleep(1 * t);
-    } else { // execute launching
-        pthread_sleep(2 * t);
+    while (get_seconds_since_start() < simulationTime){
+        if(pad_A->size == 0){
+            pthread_sleep(t);
+        }else{
+            pthread_mutex_lock(&pad_A_mutex); 
+            pad_a_available = 0;
+            Job job = Dequeue(pad_A);
+            pad_a_available = 1;
+            pthread_mutex_unlock(&pad_A_mutex);
+            if(job.type == 1){
+                pthread_sleep(1 * t);
+            }else{
+                pthread_sleep(2 * t);
+            }
+            pthread_mutex_lock(&log_mutex);
+            job.end = get_seconds_since_start();
+            //printf("PAD A. Start: %d, Request: %d, Finished: %d, id: %d\n", job.created, job.request, job.end, job.ID);
+            log_event(&job, "A");
+            pthread_mutex_unlock(&log_mutex);
+        }
     }
-    pad_a_available = 1;
+    
 }
 
 
 void* ExecutePadB(void *arg) {
-    int type = *(int*)arg;
-    if (type == 0) { // execute landing
-        pthread_sleep(1 * t);
-    } else { // execute assembly
-        pthread_sleep(6 * t);
+    while (get_seconds_since_start() < simulationTime){
+        if(pad_B->size == 0){
+            pthread_sleep(t);
+        }else{
+            pthread_mutex_lock(&pad_B_mutex);
+            pad_b_available = 0;
+            Job job = Dequeue(pad_B);
+            pad_b_available = 1;
+            pthread_mutex_unlock(&pad_B_mutex);
+            if(job.type == 1){
+                pthread_sleep(1 * t);
+            }else{
+                pthread_sleep(6 * t);
+            }
+            pthread_mutex_lock(&log_mutex);
+            job.end = get_seconds_since_start();
+            //printf("PAD-B. Start: %d, Request: %d, Finished: %d, id: %d\n", job.created, job.request, job.end, job.ID);
+            log_event(&job, "B");
+            pthread_mutex_unlock(&log_mutex);
+        }
     }
-    pad_b_available = 1;
+    
 }
 
 
