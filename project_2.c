@@ -288,19 +288,22 @@ void* ControlTower(void *arg){
         }
         if (emergency_queue->size > 0) {
             pthread_mutex_lock(&emergency_mutex);
-            job = Dequeue(emergency_queue);
-
-            if (state) {
-                pthread_mutex_lock(&pad_b_emergency_mutex);
-                Enqueue(pad_B_emergency, job);
-                enqueued_job = 1;
-                pthread_mutex_unlock(&pad_b_emergency_mutex);
-            } else {
-                pthread_mutex_lock(&pad_b_emergency_mutex);
-                Enqueue(pad_A_emergency, job);
-                enqueued_job = 1;
-                pthread_mutex_unlock(&pad_b_emergency_mutex);
-            }            
+            int switch = 0;
+            while(emergency_queue->size != 0{
+                job = Dequeue(emergency_queue);
+                if(switch){
+                    pthread_mutex_lock(&pad_b_emergency_mutex);
+                    Enqueue(pad_A_emergency, job);
+                    enqueued_job = 1;
+                    pthread_mutex_unlock(&pad_b_emergency_mutex);
+                }else{
+                    pthread_mutex_lock(&pad_b_emergency_mutex);
+                    Enqueue(pad_B_emergency, job);
+                    pthread_mutex_unlock(&pad_b_emergency_mutex);
+                    switch = 1;
+                }
+            }
+            enqueued_job = 1; 
             pthread_mutex_unlock(&emergency_mutex);
         } else {
             while((get_seconds_since_start() - peek(waiting_queue).request) >= MAX_WAIT && (assembly_queue->size <= 3 || launching_queue->size <= 3) && waiting_queue->size > 0){
@@ -406,7 +409,6 @@ void* ExecutePadA(void *arg) {
                 job.request = get_seconds_since_start();
                 pad_a_available = 1;
                 pthread_mutex_unlock(&pad_a_emergency_mutex);
-                printf("executing emergency landing in pad A\n");
                 pthread_sleep(1 * t);
             } else {
                 pthread_mutex_lock(&pad_A_mutex); 
@@ -422,7 +424,6 @@ void* ExecutePadA(void *arg) {
                 }
                 pthread_mutex_lock(&log_mutex);
                 job.end = get_seconds_since_start();
-                //printf("PAD A. Start: %d, Request: %d, Finished: %d, id: %d\n", job.created, job.request, job.end, job.ID);
                 log_event(&job, "A");
                 pthread_mutex_unlock(&log_mutex);
              }
@@ -444,7 +445,6 @@ void* ExecutePadB(void *arg) {
                 job.request = get_seconds_since_start();
                 pad_b_available = 1;
                 pthread_mutex_unlock(&pad_b_emergency_mutex);
-                printf("executing emergency landing in pad B\n");
                 pthread_sleep(1 * t);
             } else {
                 pthread_mutex_lock(&pad_B_mutex);
@@ -460,7 +460,6 @@ void* ExecutePadB(void *arg) {
                 }
                 pthread_mutex_lock(&log_mutex);
                 job.end = get_seconds_since_start();
-                //printf("PAD-B. Start: %d, Request: %d, Finished: %d, id: %d\n", job.created, job.request, job.end, job.ID);
                 log_event(&job, "B");
                 pthread_mutex_unlock(&log_mutex);
             }
