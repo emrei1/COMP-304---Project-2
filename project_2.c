@@ -140,14 +140,9 @@ int main(int argc,char **argv){
     pthread_t first_job;
     pthread_create(&first_job, NULL, LaunchJob, NULL);
 
-    double emergency_refresh = 0;
-
     while (get_seconds_since_start() < simulationTime) {
-
-        double current_time = get_seconds_since_start();
-        if ((current_time - emergency_refresh) >= 40) {
-            int i = 0;
-            for (i = 0; i < 2; i++) {
+        if (get_seconds_since_start() % (40 * t) == 0 && get_seconds_since_start() != 0) {
+            for (int i = 0; i < 2; i++) {
                 emergency_refresh = current_time;
                 pthread_t emergency_id;
                 pthread_create(&emergency_id, NULL, EmergencyJob, NULL);
