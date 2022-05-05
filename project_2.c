@@ -10,6 +10,7 @@ int simulationTime = 120;    // simulation time
 int seed = 10;               // seed for randomness
 int emergencyFrequency = 40; // frequency of emergency
 double p = 0.2;               // probability of a ground job (launch & assembly)
+int snapshot = 30;
 
 #define MAX_WAIT 5
 
@@ -50,6 +51,7 @@ void* AssemblyJob(void *arg);
 void* ControlTower(void *arg); 
 void* ExecutePadA(void *arg);
 void* ExecutePadB(void *arg);
+void* Snaptshot(void *arg)
 
 // pthread sleeper function
 int pthread_sleep (int seconds)
@@ -94,6 +96,7 @@ int main(int argc,char **argv){
         if(!strcmp(argv[i], "-p")) {p = atof(argv[++i]);}
         else if(!strcmp(argv[i], "-t")) {simulationTime = atoi(argv[++i]);}
         else if(!strcmp(argv[i], "-s"))  {seed = atoi(argv[++i]);}
+        else if(!strcmp(argv[i], "-n")) {snapshot = atoi(argv[++i]);}
     }
     start_time = time(NULL);
     logger_init();
@@ -139,6 +142,8 @@ int main(int argc,char **argv){
     pthread_create(&pad_B_id, NULL, ExecutePadB, NULL);
     pthread_t first_job;
     pthread_create(&first_job, NULL, LaunchJob, NULL);
+    pthread_th snapshot_id;
+    pthread_create(&snapshot_id, NULL, Snaptshot, NULL);
 
     while (get_seconds_since_start() < simulationTime) {
         if (get_seconds_since_start() % (40 * t) == 0 && get_seconds_since_start() != 0) {
@@ -209,6 +214,32 @@ void* LandingJob(void *arg){
 
     pthread_mutex_unlock(&landing_mutex);
     pthread_exit(0);
+}
+
+void* Snaptshot(void *arg){
+    while(get_seconds_since_start() < simulationTime){
+        if(get_seconds_since_start() > snapshot){
+            pthread_mutex_lock(&landing_mutex);
+            print("At %d sec landing: ");
+            print_queue(landing_queue);
+            pthread_mutex_unlock(&landing_mutex);
+            
+            pthread_mutex_lock(&launching_mutex);
+            print("At %d sec launching: ");
+            print_queue(launching_queue);
+            pthread_mutex_unlock(&launching_mutex);
+            
+            pthread_mutex_lock(&assembly_mutex);
+            print("At %d sec assembly: ");
+            print_queue(assembly_queue);
+            pthread_mutex_unlock(&assembly_mutex);
+            
+            pthread_mutex_lock(&waiting_mutex);
+            print("At %d sec waiting: ");
+            print_queue(waiting_queue);
+            pthread_mutex_unlock(&waiting_mutex);
+        }
+    }
 }
 
 // the function that creates plane threads for departure
