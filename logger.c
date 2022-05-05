@@ -16,9 +16,9 @@ void logger_init() {
 void log_event(Job *job, char* pad) {
   char* type;
   if(job->type == 1){
-    type = "D";
-  }else if(job->type == 2){
     type = "L";
+  }else if(job->type == 2){
+    type = "D";
   }else{
     type = "A";
   }
