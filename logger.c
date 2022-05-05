@@ -19,8 +19,10 @@ void log_event(Job *job, char* pad) {
     type = "L";
   }else if(job->type == 2){
     type = "D";
-  }else{
+  }else if(job->type == 3){
     type = "A";
+  }else{
+    type = "E";
   }
   FILE *fp = fopen("events.log", "a");
   fprintf(fp, "%d\t%s\t%d\t%d\t%d\t%s\n", job->ID, type, job->request, job->end, job->end - job->request, pad);
@@ -34,8 +36,10 @@ void log_tower(Job *job) {
     type = "D";
   }else if(job->type == 2){
     type = "L";
-  }else{
+  }else if(job->type == 3){
     type = "A";
+  }else{
+    type = "E";
   }
   FILE *fp = fopen("tower.log", "a");
   fprintf(fp, "%d\t%s\t%d\n", job->ID, type, job->request);
