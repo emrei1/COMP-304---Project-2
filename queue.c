@@ -118,3 +118,12 @@ int isEmpty(Queue* pQueue) {
         return FALSE;
     }
 }
+
+void print_queue(struct Queue *queue) {
+  for (int i = 0; i < queue->size; i++) {
+    int index = (i + queue->head) % queue->capacity;
+    printf("%d ", queue->queue_array[index]->id);
+  }
+  printf("\n");
+}
+    
