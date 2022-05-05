@@ -264,7 +264,6 @@ void* ControlTower(void *arg){
             if(landing_queue->size > 0){
                 job = Dequeue(landing_queue);
                 enqueued_job = 1;
-                job.request = get_seconds_since_start();
                 if(assembly_queue->size > 3){
                     Enqueue(waiting_queue, job);
                 }else{
@@ -285,7 +284,6 @@ void* ControlTower(void *arg){
                 if(assembly_queue->size > 0){
                     job = Dequeue(assembly_queue);
                     enqueued_job = 1;
-                    job.request = get_seconds_since_start();
                     pthread_mutex_lock(&pad_B_mutex);
                     Enqueue(pad_B, job);
                     pthread_mutex_unlock(&pad_B_mutex);
@@ -298,8 +296,7 @@ void* ControlTower(void *arg){
             pthread_mutex_lock(&landing_mutex);
             if(landing_queue->size > 0){
                 job = Dequeue(landing_queue);
-                 enqueued_job = 1;
-                job.request = get_seconds_since_start();
+                enqueued_job = 1;
                 if(launching_queue->size > 3){
                     Enqueue(waiting_queue, job);
                 }else{
@@ -320,7 +317,6 @@ void* ControlTower(void *arg){
                 if(launching_queue->size > 0){
                     job = Dequeue(launching_queue);
                     enqueued_job = 1;
-                    job.request = get_seconds_since_start();
                     pthread_mutex_lock(&pad_A_mutex);
                     Enqueue(pad_A, job);
                     pthread_mutex_unlock(&pad_A_mutex);
@@ -346,6 +342,7 @@ void* ExecutePadA(void *arg) {
             pthread_mutex_lock(&pad_A_mutex); 
             pad_a_available = 0;
             Job job = Dequeue(pad_A);
+            job.request = get_seconds_since_start();
             pad_a_available = 1;
             pthread_mutex_unlock(&pad_A_mutex);
             if(job.type == 1){
@@ -372,6 +369,7 @@ void* ExecutePadB(void *arg) {
             pthread_mutex_lock(&pad_B_mutex);
             pad_b_available = 0;
             Job job = Dequeue(pad_B);
+            job.request = get_seconds_since_start();
             pad_b_available = 1;
             pthread_mutex_unlock(&pad_B_mutex);
             if(job.type == 1){
