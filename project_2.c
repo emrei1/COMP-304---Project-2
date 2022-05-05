@@ -125,14 +125,12 @@ int main(int argc,char **argv){
     pthread_t first_job;
     pthread_create(&first_job, NULL, LaunchJob, NULL);
    
-    int type = 0;
+    char* type = ""; 
     while (get_seconds_since_start() < simulationTime) {
         double random = (rand() / (double) RAND_MAX);
-        printf("rand: %f\n", random);
         if (random > p) {
             // landing
-            printf("random is %f\n", random);
-            printf("p is %f\n", p);
+            type = "landing";
             pthread_t landing_id;
             pthread_create(&landing_id, NULL, LandingJob, NULL);
         } else {
@@ -140,14 +138,17 @@ int main(int argc,char **argv){
             printf("p is %f\n", p);
             if (random > (p / 2)) {
                 // new launching job
+                type = "launch";
                 pthread_t launching_id;
                 pthread_create(&launching_id, NULL, LaunchJob, NULL);
             } else {
                 // new assembly job
+                type = "assembly";
                 pthread_t assembly_id;
                 pthread_create(&assembly_id, NULL, AssemblyJob, NULL);
             }
         }
+        printf("rand: %f\n, type: %s\n", random,type);
         pthread_sleep(t);
     }
     
