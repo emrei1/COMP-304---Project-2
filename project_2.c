@@ -236,13 +236,15 @@ void* AssemblyJob(void *arg){
 void* ControlTower(void *arg){
     int state = 0;
     Job job;
+   
+    int enqueued_job = 0;
+
     while (get_seconds_since_start() < simulationTime) {
         if(pad_A->size > pad_B->size){
             state = 1;
         }else{
             state = 0;
         }
-        printf("land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
         while((get_seconds_since_start() - peek(waiting_queue).request) >= MAX_WAIT && (assembly_queue->size <= 3 || launching_queue->size <= 3) && waiting_queue->size > 0){
             job = Dequeue(waiting_queue);
             if(state){
@@ -254,15 +256,16 @@ void* ControlTower(void *arg){
                 Enqueue(pad_A, job);
                 pthread_mutex_unlock(&pad_A_mutex);
             }
-            printf("land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
+            printf("WAIT: land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
         }
 
         if(pad_b_available && pad_B->size == 0){ //pad B
             pthread_mutex_lock(&landing_mutex);
             if(landing_queue->size > 0){
                 job = Dequeue(landing_queue);
+                enqueued_job = 1;
                 job.request = get_seconds_since_start();
-                if(waiting_queue->size == 0 || assembly_queue->size > 3 || launching_queue->size > 3){
+                if(assembly_queue->size > 3){
                     Enqueue(waiting_queue, job);
                 }else{
                     if(state){
@@ -275,19 +278,18 @@ void* ControlTower(void *arg){
                         pthread_mutex_unlock(&pad_A_mutex);
                     }
                 }
-                log_tower(&job);
                 pthread_mutex_unlock(&landing_mutex);
             }else{
                 pthread_mutex_unlock(&landing_mutex);
                 pthread_mutex_lock(&assembly_mutex);
                 if(assembly_queue->size > 0){
                     job = Dequeue(assembly_queue);
+                    enqueued_job = 1;
                     job.request = get_seconds_since_start();
                     pthread_mutex_lock(&pad_B_mutex);
                     Enqueue(pad_B, job);
                     pthread_mutex_unlock(&pad_B_mutex);
                 }
-                log_tower(&job);
                 pthread_mutex_unlock(&assembly_mutex);
             }
         }
@@ -296,8 +298,9 @@ void* ControlTower(void *arg){
             pthread_mutex_lock(&landing_mutex);
             if(landing_queue->size > 0){
                 job = Dequeue(landing_queue);
+                 enqueued_job = 1;
                 job.request = get_seconds_since_start();
-                if(waiting_queue->size == 0 || assembly_queue->size > 3 || launching_queue->size > 3){
+                if(launching_queue->size > 3){
                     Enqueue(waiting_queue, job);
                 }else{
                     if(state){
@@ -310,21 +313,26 @@ void* ControlTower(void *arg){
                         pthread_mutex_unlock(&pad_A_mutex);
                     }
                 }
-                log_tower(&job);
                 pthread_mutex_unlock(&landing_mutex);
             }else{
                 pthread_mutex_unlock(&landing_mutex);
                 pthread_mutex_lock(&launching_mutex);
                 if(launching_queue->size > 0){
                     job = Dequeue(launching_queue);
+                    enqueued_job = 1;
                     job.request = get_seconds_since_start();
                     pthread_mutex_lock(&pad_A_mutex);
                     Enqueue(pad_A, job);
                     pthread_mutex_unlock(&pad_A_mutex);
                 }
-                log_tower(&job);
                 pthread_mutex_unlock(&launching_mutex);
             }
+        }
+        printf("land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
+        
+        if (enqueued_job) {
+            log_tower(&job);
+            enqueued_job = 0;
         }
         pthread_sleep(t);
     }
