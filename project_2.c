@@ -125,16 +125,21 @@ int main(int argc,char **argv){
     pthread_t first_job;
     pthread_create(&first_job, NULL, LaunchJob, NULL);
    
+    int type = 0;
     while (get_seconds_since_start() < simulationTime) {
         double random = (rand() / (double) RAND_MAX);
-        printf("rand: %d\n", random);
-        if (random <= p) {
+        printf("rand: %f\n", random);
+        if (random > p) {
             // landing
+            printf("random is %f\n", random);
+            printf("p is %f\n", p);
             pthread_t landing_id;
             pthread_create(&landing_id, NULL, LandingJob, NULL);
         } else {
-            if (random > p && random <= (p + ((1 - p) / 2))) {
-                // new launching jıb
+            printf("random is %f\n", random);
+            printf("p is %f\n", p);
+            if (random > (p / 2)) {
+                // new launching job
                 pthread_t launching_id;
                 pthread_create(&launching_id, NULL, LaunchJob, NULL);
             } else {
@@ -327,6 +332,7 @@ void* ControlTower(void *arg){
         printf("land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
         
         if (enqueued_job) {
+            job.request = get_seconds_since_start();
             log_tower(&job);
             enqueued_job = 0;
         }
