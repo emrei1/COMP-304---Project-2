@@ -98,6 +98,7 @@ Job Dequeue(Queue *pQueue) {
     return ret;
 }
 
+//Returns the first element of the queue withouth dequeuing
 Job peek(Queue *pQueue){
     NODE *item;
     Job ret;
@@ -119,11 +120,23 @@ int isEmpty(Queue* pQueue) {
     }
 }
 
-void print_queue(Queue *queue) {
-    NODE *item = queue->head;
-    while (item->prev != NULL) {
-        printf("%d, ", item->data.ID);
-        item = item->prev;
-    }
+//Prints the elements in the queue
+void print_queue(Queue *pQueue) {
+    if(pQueue->size == 0){
+        printf("None");
+    }else{
+        NODE *item;
+        item = pQueue->head;
+       do{
+            printf("%d", item->data.ID);
+            if(item->prev == NULL){
+                printf(".");
+                break;
+            }else{
+                printf(", ");
+                item = item->prev;
+            }
+        }while(1); 
+    }   
 }
     

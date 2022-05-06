@@ -13,6 +13,7 @@ void logger_init() {
   fclose(fp);
 }
 
+//Logs the jobs thats been completed by the pads.
 void log_event(Job *job, char* pad) {
   char* type;
   if(job->type == 1){
@@ -29,7 +30,7 @@ void log_event(Job *job, char* pad) {
   fclose(fp);
 }
 
-// to be called when a plane arrives
+//Logs the jobs that came through the control tower
 void log_tower(Job *job) {
   char* type;
   if(job->type == 1){
