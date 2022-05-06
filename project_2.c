@@ -52,7 +52,7 @@ void* AssemblyJob(void *arg);
 void* ControlTower(void *arg); 
 void* ExecutePadA(void *arg);
 void* ExecutePadB(void *arg);
-void* Snaptshot(void *arg);
+void* Snapshot(void *arg);
 
 // pthread sleeper function
 int pthread_sleep (int seconds)
@@ -91,6 +91,7 @@ int main(int argc,char **argv){
     // -p (float) => sets p
     // -t (int) => simulation time in seconds
     // -s (int) => change the random seed
+    // -n (int) => change the snapshot time
 
     // update parameters to input    
     int i = 1;
@@ -149,7 +150,7 @@ int main(int argc,char **argv){
     pthread_t first_job;
     pthread_create(&first_job, NULL, LaunchJob, NULL);
     pthread_t snapshot_id;
-    pthread_create(&snapshot_id, NULL, Snaptshot, NULL);
+    pthread_create(&snapshot_id, NULL, Snapshot, NULL);
 
     // generate new jobs until simulation time. jobs are created according to the probability value p. Possible job types are landing, launching, assembly, and emergency landing. A new thread is created for each generated job.
     while (get_seconds_since_start() < simulationTime) {
@@ -195,13 +196,12 @@ int main(int argc,char **argv){
     pthread_join(pad_B_id, NULL);
     pthread_join(snapshot_id, NULL);
 
-    // your code goes here
     DestructQueue(landing_queue);
     DestructQueue(assembly_queue);
     DestructQueue(launching_queue);
-    free(landing_queue);
-    free(assembly_queue);
-    free(launching_queue);
+    DestructQueue(waiting_queue);
+    DestructQueue(pad_A);
+    DestructQueue(pad_B);
 
     return 0;
 }
@@ -224,27 +224,32 @@ void* LandingJob(void *arg){
     pthread_exit(0);
 }
 
-void* Snaptshot(void *arg){
+//Snapshot function prints all the queues every second after the snapshot time is reached 
+void* Snapshot(void *arg){
     while(get_seconds_since_start() < simulationTime){
         if(get_seconds_since_start() > snapshot){
             pthread_mutex_lock(&landing_mutex);
             printf("At %d sec landing: ", get_seconds_since_start());
             print_queue(landing_queue);
+            printf("\n");
             pthread_mutex_unlock(&landing_mutex);
             
             pthread_mutex_lock(&launching_mutex);
             printf("At %d sec launching: ", get_seconds_since_start());
             print_queue(launching_queue);
+            printf("\n");
             pthread_mutex_unlock(&launching_mutex);
             
             pthread_mutex_lock(&assembly_mutex);
             printf("At %d sec assembly: ", get_seconds_since_start());
             print_queue(assembly_queue);
+            printf("\n");
             pthread_mutex_unlock(&assembly_mutex);
             
             pthread_mutex_lock(&waiting_mutex);
             printf("At %d sec waiting: ", get_seconds_since_start());
             print_queue(waiting_queue);
+            printf("\n");
             pthread_mutex_unlock(&waiting_mutex);
         }
         pthread_sleep(1);
@@ -312,7 +317,8 @@ void* AssemblyJob(void *arg){
 void* ControlTower(void *arg){
     int state = 0;
     Job job;
-   
+    
+    //This is to check if a job requests and send to either one of the pads.
     int enqueued_job = 0;
 
     // control tower runs until simulation time
@@ -326,6 +332,7 @@ void* ControlTower(void *arg){
         if (emergency_queue->size > 0) {
             pthread_mutex_lock(&emergency_mutex);
             int change = 0;
+            //First emergency job is sent to pad B, second one is sent to pad A.
             while(emergency_queue->size != 0) {
                 job = Dequeue(emergency_queue);
                 if(change){
@@ -342,13 +349,15 @@ void* ControlTower(void *arg){
             }
             enqueued_job = 1; 
             pthread_mutex_unlock(&emergency_mutex);
-        } else { // then check other jobs. prioritize landing over assembly and launching.
-            // check if there are any planes waiting in the waiting queue.
+        } else { 
+            // then check other jobs. prioritize landing over assembly and launching.
+            // Check if there are any jobs waiting in the waiting queue and check if their wait time is exceeded and check is there is assembly or launching jobs accumulated.
+            //If theses conditions are satisfied then the waiting queue is processed.
             while((get_seconds_since_start() - peek(waiting_queue).request) >= MAX_WAIT && (assembly_queue->size <= 3 || launching_queue->size <= 3) && waiting_queue->size > 0){
                 pthread_mutex_lock(&waiting_mutex);
                 job = Dequeue(waiting_queue);
                 pthread_mutex_unlock(&waiting_mutex);
-                if(state){ // allocate jobs efficiently in between pads for landing. assign landing plane to pad that has fewer jobs 
+                if(state){ // allocate jobs efficiently in between pads for landing. assign landing job to pad that has fewer jobs 
                     pthread_mutex_lock(&pad_B_mutex);
                     Enqueue(pad_B, job);
                     pthread_mutex_unlock(&pad_B_mutex);
@@ -357,10 +366,10 @@ void* ControlTower(void *arg){
                     Enqueue(pad_A, job);
                     pthread_mutex_unlock(&pad_A_mutex);
                 }
-                printf("WAIT: land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
+                //printf("WAIT: land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
             }
 
-            // For pad B, prioritize landing until conditions are satisfied -> no more planes are waiting to land or there are 3 or more assembly jobs waiting.
+            // For pad B, prioritize landing until conditions are satisfied -> no more jobs are waiting to land or there are 3 or more assembly jobs waiting.
             if(pad_b_available && pad_B->size == 0){ //pad B
                 pthread_mutex_lock(&landing_mutex);
                 if(landing_queue->size > 0){
@@ -398,6 +407,7 @@ void* ControlTower(void *arg){
                 }
             }
 
+            // For pad A, prioritize landing until conditions are satisfied -> no more  are waiting to land or there are 3 or more launching jobs waiting.
             if(pad_a_available && pad_A->size == 0){ //pad A
                 pthread_mutex_lock(&landing_mutex);
                 if(landing_queue->size > 0){
@@ -432,8 +442,8 @@ void* ControlTower(void *arg){
                     pthread_mutex_unlock(&launching_mutex);
                 }
             }
-            printf("land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
-        
+            //printf("land: %d, launch: %d, assemb: %d, wait: %d, a: %d, b: %d\n", landing_queue->size, launching_queue->size, assembly_queue->size,waiting_queue->size, pad_A->size,pad_B->size);
+            //If a job is sent to either pads its logged in tower.log
             if (enqueued_job) {
                 job.request = get_seconds_since_start();
                 log_tower(&job);
@@ -445,10 +455,13 @@ void* ControlTower(void *arg){
 }
 
 void* ExecutePadA(void *arg) {
+    //Pad a runs until the simulation time is reached.
+    //If there a no jobs in its queue then it sleeps 2 seconds.
     while (get_seconds_since_start() < simulationTime){
         if (pad_A->size == 0 && pad_A_emergency->size == 0){ 
             pthread_sleep(t);
         } else{
+            //First priority is emergency jobs, then other jobs.
             if (pad_A_emergency->size > 0) {
                 pthread_mutex_lock(&pad_a_emergency_mutex);
                 pad_a_available = 0;
@@ -481,10 +494,13 @@ void* ExecutePadA(void *arg) {
 
 
 void* ExecutePadB(void *arg) {
+    //Pad a runs until the simulation time is reached.
+    //If there a no jobs in its queue then it sleeps 2 seconds.
     while (get_seconds_since_start() < simulationTime){
         if(pad_B->size == 0){
             pthread_sleep(t);
-        }else{
+        }else{                        
+            //First priority is emergency jobs, then other jobs.
             if (pad_B_emergency->size > 0) {
                 pthread_mutex_lock(&pad_b_emergency_mutex);
                 pad_b_available = 0;
