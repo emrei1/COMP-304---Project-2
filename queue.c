@@ -119,12 +119,11 @@ int isEmpty(Queue* pQueue) {
     }
 }
 
-void print_queue(struct Queue *queue) {
-  int i = 0;
-  for (i = 0; i < queue->size; i++) {
-    int index = (i + queue->head) % queue->capacity;
-    printf("%d, ", queue->queue_array[index]->id);
-  }
-  printf("\n");
+void print_queue(Queue *queue) {
+    NODE *item = queue->head;
+    while (item->prev != NULL) {
+        printf("%d, ", item->data.ID);
+        item = item->prev;
+    }
 }
     
