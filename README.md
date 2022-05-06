@@ -14,3 +14,6 @@ Finally, the pads (A and B) have their own threads that check for jobs every t s
 
 ### Data Structures Used and Concurrency Logic
 Our program uses four different queues for landing, launching, assembly, and emergency that are used to store the jobs that are waiting to be sent to the pads from the control tower. They all have their corresponding mutex variables and are locked and unlocked when a thread enters the critical section that modifies these queues. PadA and PadB are also queues used to send jobs to the pads and they also have their own mutexes.
+
+### Logger
+Logger has two methods and one init method. Init method creates the 'events.log' and 'tower.log' files and puts the headers in them. Other two methods appends to 'events.log' and 'tower.log' details of the jobs accordingly.
